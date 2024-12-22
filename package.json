@@ -1,0 +1,19 @@
+{
+  "name": "pdf-processor",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "npm run copy-worker && vite",
+    "build": "npm run copy-worker && vite build",
+    "copy-worker": "node scripts/copy-worker.js",
+    "postinstall": "npm run copy-worker"
+  },
+  "dependencies": {
+    "pdfjs-dist": "3.11.174",
+    "tesseract.js": "^5.0.3"
+  },
+  "devDependencies": {
+    "fs-extra": "^11.2.0",
+    "vite": "^5.0.0"
+  }
+}

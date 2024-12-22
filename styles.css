@@ -1,0 +1,215 @@
+/* Minimalne własne style */
+.is-fullheight-content {
+    height: calc(100vh - 12rem);
+    overflow: hidden;
+}
+
+.pdf-preview {
+    height: 100%;
+    overflow: auto;
+    padding: 1rem;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+}
+
+.results-list {
+    height: 100%;
+    overflow-y: auto;
+}
+
+.result-item {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #dbdbdb;
+    border-radius: 4px;
+}
+
+/* Dark mode */
+.dark-mode {
+    background-color: #0a0a0a;
+    color: #fff;
+}
+
+.dark-mode .box {
+    background-color: #1a1a1a;
+    color: #fff;
+    border: 1px solid #363636;
+}
+
+.dark-mode .button {
+    background-color: #363636;
+    color: #fff;
+    border-color: #4a4a4a;
+}
+
+.dark-mode .button:hover {
+    background-color: #4a4a4a;
+}
+
+.dark-mode .button.is-light {
+    background-color: #4a4a4a;
+    color: #fff;
+}
+
+.dark-mode .button.is-primary {
+    background-color: #3273dc;
+}
+
+.dark-mode .button.is-info {
+    background-color: #209cee;
+}
+
+.dark-mode .button.is-danger {
+    background-color: #ff3860;
+}
+
+.dark-mode .file-cta {
+    background-color: #363636;
+    color: #fff;
+    border-color: #4a4a4a;
+}
+
+.dark-mode .checkbox {
+    color: #fff;
+}
+
+.dark-mode .title {
+    color: #fff;
+}
+
+.dark-mode .pdf-preview {
+    background-color: #262626;
+}
+
+.dark-mode .result-item {
+    background-color: #262626;
+    border-color: #363636;
+}
+
+.dark-mode .notification {
+    background-color: #363636;
+    color: #fff;
+}
+
+/* Scrollbary */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #dbdbdb;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #b5b5b5;
+}
+
+.dark-mode ::-webkit-scrollbar-track {
+    background: #262626;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb {
+    background: #363636;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb:hover {
+    background: #4a4a4a;
+}
+
+/* Style dla menu */
+.menu-label {
+    color: #7a7a7a;
+    font-size: 0.8em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 1rem;
+}
+
+.menu-list a {
+    color: var(--text-color);
+    padding: 0.5em 0.75em;
+    border-radius: 4px;
+}
+
+.menu-list a:hover {
+    background-color: var(--hover-color);
+}
+
+.menu-list .icon-text {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Dark mode dla menu */
+.dark-mode .menu-label {
+    color: #888;
+}
+
+.dark-mode .menu-list a {
+    color: #fff;
+}
+
+.dark-mode .menu-list a:hover {
+    background-color: #363636;
+}
+
+/* Powiadomienia */
+.notification {
+    padding: 1.25rem;
+    border-radius: 4px;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.notification .icon-text {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.notification .icon {
+    font-size: 1.25rem;
+}
+
+.notification.is-success {
+    background-color: #48c774;
+    color: #fff;
+}
+
+.notification.is-warning {
+    background-color: #ffdd57;
+    color: rgba(0, 0, 0, 0.7);
+}
+
+.notification.is-danger {
+    background-color: #f14668;
+    color: #fff;
+}
+
+.notification.is-info {
+    background-color: #3298dc;
+    color: #fff;
+}
+
+/* Dark mode */
+.dark-mode .notification.is-warning {
+    background-color: #947600;
+    color: #fff;
+}
+
+.dark-mode .notification .delete {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark-mode .notification .delete:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+  
