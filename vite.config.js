@@ -9,23 +9,28 @@ export default defineConfig(({ mode }) => {
             'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY),
             'process.env.OPENAI_ASSISTANT_ID': JSON.stringify(env.OPENAI_ASSISTANT_ID)
         },
-        resolve: {
-            alias: {
-                'pdfjs-dist': resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.js'),
-            },
-        },
         optimizeDeps: {
-            include: ['pdfjs-dist'],
+            include: ['pdfjs-dist']
         },
         build: {
             rollupOptions: {
-                external: ['/pdf.worker.min.js']
+                input: {
+                    main: resolve(__dirname, 'index.html'),
+                },
+                output: {
+                    manualChunks: {
+                        pdf: ['pdfjs-dist']
+                    }
+                }
             }
         },
         server: {
-            fs: {
-                strict: false
+            headers: {
+                'Cross-Origin-Embedder-Policy': 'require-corp',
+                'Cross-Origin-Opener-Policy': 'same-origin',
+                'Cross-Origin-Resource-Policy': 'cross-origin'
             }
-        }
+        },
+        publicDir: 'public'
     };
 }); 

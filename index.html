@@ -39,6 +39,26 @@
             background-color: #1a1a1a;
             color: #fff;
         }
+
+        .result-header-item {
+            margin: 1rem 0 0.5rem 0;
+            padding: 0.5rem;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .dark-mode .result-header-item {
+            background-color: #2c2c2c;
+        }
+
+        .header-content {
+            font-weight: bold;
+            color: #4a4a4a;
+        }
+
+        .dark-mode .header-content {
+            color: #e4e4e4;
+        }
     </style>
 </head>
 <body>
@@ -63,7 +83,8 @@
                     <div class="control">
                         <div class="file has-name is-centered">
                             <label class="file-label">
-                                <input id="file-input" class="file-input" type="file" accept=".pdf" multiple>
+                                <input id="file-input" class="file-input" type="file" 
+                                    accept=".pdf,.jpg,.jpeg,.png" multiple>
                                 <span class="file-cta">
                                     <span class="file-icon">
                                         <i class="fas fa-upload"></i>
@@ -81,9 +102,10 @@
                             <span class="icon">
                                 <i class="fas fa-file-pdf"></i>
                             </span>
-                            <span>Wyodrębnij dane</span>
+                            <span>Analizuj PDF</span>
                         </button>
                     </div>
+                    <!-- Ukryty przycisk OCR
                     <div class="control">
                         <button id="ocr-btn" class="button is-info" disabled>
                             <span class="icon">
@@ -92,8 +114,9 @@
                             <span>OCR</span>
                         </button>
                     </div>
+                    -->
                     <div class="control">
-                        <button id="clear-btn" class="button is-danger">
+                        <button id="clear-btn" class="button">
                             <span class="icon">
                                 <i class="fas fa-trash"></i>
                             </span>
@@ -194,12 +217,18 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-    <script>
-        window.pdfjsLib = window['pdfjs-dist/build/pdf'];
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    <script type="module">
+        import * as pdfjsLib from 'pdfjs-dist';
+        import { createWorker } from 'tesseract.js';
+        
+        window.pdfjsLib = pdfjsLib;
+        window.Tesseract = { createWorker };
+        
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            'pdf.worker.min.js',
+            import.meta.url
+        ).href;
     </script>
-    <script src='https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js' defer></script>
     <script type="module" src="src/index.js"></script>
 </body>
 </html> 

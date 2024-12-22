@@ -2,13 +2,17 @@ import { PDFViewer } from './components/PDFViewer.js';
 import { FileHandler } from './services/FileHandler.js';
 import { ExportService } from './services/ExportService.js';
 import { PDFParser } from './services/PDFParser.js';
+import { TextProcessor } from './services/TextProcessor.js';
 
-class PDFProcessor {
+export class PDFProcessor {
     constructor() {
-        this.initializeComponents();
-        this.setupEventListeners();
         this.currentResults = [];
-        this.initializeTheme();
+        this.initializeComponents().then(() => {
+            this.setupEventListeners();
+            this.initializeTheme();
+        }).catch(error => {
+            console.error('Błąd inicjalizacji:', error);
+        });
     }
 
     initializeTheme() {
@@ -34,33 +38,61 @@ class PDFProcessor {
     }
 
     async initializeComponents() {
-        this.fileHandler = new FileHandler();
-        this.pdfViewer = new PDFViewer();
-        this.exportService = new ExportService();
-        this.pdfParser = new PDFParser();
-
         try {
+            this.fileHandler = new FileHandler();
+            this.pdfViewer = new PDFViewer();
+            this.exportService = new ExportService();
+            this.pdfParser = new PDFParser();
+            this.textProcessor = new TextProcessor();
+
+            // Poczekaj na inicjalizację ChatGPT
             await this.pdfParser.chatGPTService.checkConnection();
+            
+            console.log('Komponenty zainicjalizowane pomyślnie');
         } catch (error) {
-            this.showError('Błąd konfiguracji OpenAI:', error);
+            console.error('Błąd podczas inicjalizacji komponentów:', error);
+            this.showError('Błąd konfiguracji:', error);
+            throw error;
         }
     }
 
     setupEventListeners() {
-        document.getElementById('file-input')
-            .addEventListener('change', (e) => this.handleFileUpload(e));
+        // Upewnij się, że komponenty są zainicjalizowane
+        if (!this.pdfParser || !this.pdfViewer || !this.fileHandler) {
+            console.error('Komponenty nie zostały prawidłowo zainicjalizowane');
+            return;
+        }
+
+        const fileInput = document.getElementById('file-input');
+        const pdfBtn = document.getElementById('pdf-btn');
+        const ocrBtn = document.getElementById('ocr-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const themeToggle = document.getElementById('theme-toggle');
+        const selectAll = document.getElementById('select-all');
+
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+        }
         
-        document.getElementById('pdf-btn')
-            .addEventListener('click', () => this.handlePDFExtract());
+        if (pdfBtn) {
+            pdfBtn.addEventListener('click', () => this.handlePDFExtract());
+        }
         
-        document.getElementById('clear-btn')
-            .addEventListener('click', () => this.clearAll());
+        if (ocrBtn) {
+            ocrBtn.addEventListener('click', () => this.handleOCR());
+        }
         
-        document.getElementById('theme-toggle')
-            .addEventListener('click', () => this.toggleTheme());
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => this.clearAll());
+        }
         
-        document.getElementById('select-all')
-            ?.addEventListener('change', (e) => this.handleSelectAll(e.target.checked));
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => this.toggleTheme());
+        }
+        
+        if (selectAll) {
+            selectAll.addEventListener('change', (e) => this.handleSelectAll(e.target.checked));
+        }
 
         document.querySelectorAll('.export-btn').forEach(btn => {
             btn.addEventListener('click', () => this.handleExport(btn.dataset.format));
@@ -105,6 +137,11 @@ class PDFProcessor {
     }
 
     async handlePDFExtract() {
+        if (!this.pdfParser) {
+            this.showError('Błąd:', new Error('System nie jest gotowy do przetwarzania PDF'));
+            return;
+        }
+
         try {
             this.showProgress('Przetwarzanie PDF...');
             const files = this.pdfViewer.getLoadedFiles();
@@ -112,7 +149,6 @@ class PDFProcessor {
 
             for (const file of files) {
                 const parsedData = await this.pdfParser.parsePDF(file);
-                // Każda sekcja będzie osobnym wynikiem
                 if (parsedData.metadata.gptAnalysis && parsedData.metadata.gptAnalysis.sections) {
                     results.push({
                         text: '',
@@ -137,11 +173,67 @@ class PDFProcessor {
     }
 
     async handleOCR() {
+        if (!this.textProcessor) {
+            this.showError('Błąd:', new Error('System nie jest gotowy do przetwarzania OCR'));
+            return;
+        }
+
         try {
             this.showProgress('Przetwarzanie OCR...');
             const files = this.pdfViewer.getLoadedFiles();
-            this.currentResults = await this.textProcessor.processWithOCR(files);
+            const ocrResults = await this.textProcessor.processWithOCR(files);
+            
+            // Przygotuj wyniki do analizy przez asystenta
+            const results = [];
+            
+            for (const ocrResult of ocrResults) {
+                try {
+                    const cleanedText = this.cleanOCRText(ocrResult.text);
+                    const parsedData = await this.pdfParser.chatGPTService.processOrderData({
+                        text: cleanedText,
+                        source: ocrResult.source
+                    });
+
+                    // Formatuj odpowiedź przed dodaniem do wyników
+                    const formattedResponse = this.formatGPTResponse(parsedData);
+                    
+                    // Dodaj sformatowane wyniki
+                    if (formattedResponse) {
+                        results.push({
+                            text: '',
+                            confidence: ocrResult.confidence,
+                            source: ocrResult.source,
+                            type: 'ocr',
+                            group: 'analysis',
+                            metadata: {
+                                gptAnalysis: formattedResponse.metadata?.gptAnalysis
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Błąd analizy OCR dla ${ocrResult.source}:`, error);
+                    // Dodaj błędny wynik w podstawowym formacie
+                    results.push({
+                        text: ocrResult.text,
+                        confidence: ocrResult.confidence,
+                        source: ocrResult.source,
+                        type: 'ocr',
+                        group: 'error',
+                        metadata: {
+                            gptAnalysis: {
+                                sections: [{
+                                    content: `Błąd analizy: ${error.message}`
+                                }]
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Formatuj wyniki tak samo jak dla PDF
+            this.currentResults = this.formatResults(results);
             this.displayResults();
+            this.enableExport();
         } catch (error) {
             this.showError('Błąd przetwarzania OCR:', error);
         } finally {
@@ -153,25 +245,34 @@ class PDFProcessor {
         const formattedResults = [];
         
         results.forEach((result, resultIndex) => {
-            if (result.metadata.gptAnalysis && result.metadata.gptAnalysis.sections) {
+            if (result.metadata?.gptAnalysis?.sections) {
                 // Dla każdej sekcji tworzymy osobny element
                 result.metadata.gptAnalysis.sections.forEach((section, sectionIndex) => {
+                    // Pomijamy nagłówki grup przy wyświetlaniu confidence
+                    const showConfidence = !section.isHeader;
+                    
                     formattedResults.push({
                         id: `result-${resultIndex}-${sectionIndex}`,
                         content: section.content,
                         metadata: {
-                            source: `${result.source} - Linia ${sectionIndex + 1}`,
+                            source: section.isHeader ? '' : `${result.source}`,
                             type: result.type,
                             group: result.group,
-                            confidence: result.confidence
+                            confidence: showConfidence ? result.confidence : undefined,
+                            isHeader: section.isHeader
                         }
                     });
                 });
             } else {
                 formattedResults.push({
                     id: `result-${resultIndex}`,
-                    content: result.text,
-                    metadata: result.metadata
+                    content: result.text || '',
+                    metadata: {
+                        source: result.source || '',
+                        type: result.type || 'unknown',
+                        confidence: result.confidence || 0,
+                        group: result.group || 'other'
+                    }
                 });
             }
         });
@@ -181,42 +282,42 @@ class PDFProcessor {
 
     displayResults() {
         const resultsList = document.getElementById('results-list');
+        if (!resultsList) return;
+
         resultsList.innerHTML = '';
-
-        // Resetuj stan checkboxa "zaznacz wszystkie"
-        const selectAllCheckbox = document.getElementById('select-all');
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = false;
-        }
-
-        this.currentResults.forEach((result, index) => {
-            const resultDiv = document.createElement('div');
-            resultDiv.className = 'result-item';
+        
+        this.currentResults.forEach(result => {
+            const resultItem = document.createElement('div');
+            resultItem.className = 'result-item';
             
-            // Dodaj nagłówek z metadanymi
-            const header = document.createElement('div');
-            header.className = 'result-header';
-            header.innerHTML = `
-                <input type="checkbox" id="${result.id}" />
-                <label for="${result.id}">${result.metadata.source}</label>
-                <span class="confidence">${Math.round(result.metadata.confidence)}</span>
-            `;
-
-            // Dodaj zawartość
-            const content = document.createElement('div');
-            content.className = 'result-content';
-            content.textContent = result.content;
-
-            resultDiv.appendChild(header);
-            resultDiv.appendChild(content);
+            // Różne style dla nagłówków i zwykłych wyników
+            if (result.metadata.isHeader) {
+                resultItem.className += ' result-header-item';
+                resultItem.innerHTML = `
+                    <div class="result-content header-content">${result.content}</div>
+                `;
+            } else {
+                resultItem.innerHTML = `
+                    <div class="result-header">
+                        <label class="checkbox">
+                            <input type="checkbox" data-id="${result.id}">
+                            ${result.metadata.source}
+                        </label>
+                        ${result.metadata.confidence !== undefined ? 
+                            `<span class="confidence">${result.metadata.confidence}%</span>` : 
+                            ''}
+                    </div>
+                    <div class="result-content">${result.content}</div>
+                `;
+            }
             
-            // Dodajemy opóźnienie dla każdego kolejnego elementu
-            setTimeout(() => {
-                resultsList.appendChild(resultDiv);
-            }, index * 50);
+            resultsList.appendChild(resultItem);
         });
 
-        this.enableExport();
+        // Włącz przyciski eksportu jeśli są wyniki
+        if (this.currentResults.length > 0) {
+            this.enableExport();
+        }
     }
 
     formatOrderItems(items) {
@@ -296,12 +397,41 @@ class PDFProcessor {
     }
 
     clearAll() {
-        this.fileHandler.clear();
-        this.pdfViewer.clear();
-        this.textProcessor.clear();
+        // Wyczyść pliki
+        if (this.fileHandler) {
+            this.fileHandler.clear();
+        }
+
+        // Wyczyść podgląd PDF
+        if (this.pdfViewer) {
+            this.pdfViewer.clear();
+        }
+
+        // Wyczyść wyniki
         this.currentResults = [];
-        document.getElementById('results-list').innerHTML = '';
+        const resultsList = document.getElementById('results-list');
+        if (resultsList) {
+            resultsList.innerHTML = '';
+        }
+
+        // Zresetuj przyciski
+        const pdfBtn = document.getElementById('pdf-btn');
+        const ocrBtn = document.getElementById('ocr-btn');
+        if (pdfBtn) pdfBtn.disabled = true;
+        if (ocrBtn) ocrBtn.disabled = true;
+
+        // Wyczyść zaznaczenia
+        const selectAllCheckbox = document.getElementById('select-all');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
+
+        // Wyłącz przyciski eksportu
         this.disableExport();
+
+        // Wyczyść komunikaty
+        const notifications = document.querySelectorAll('.notification');
+        notifications.forEach(notification => notification.remove());
     }
 
     enableExport() {
@@ -476,9 +606,147 @@ class PDFProcessor {
         };
         return icons[type] || icons.info;
     }
+
+    // Dodaj nową metodę do czyszczenia tekstu OCR
+    cleanOCRText(text) {
+        if (!text) return '';
+
+        return text
+            // Usuń wielokrotne spacje
+            .replace(/\s+/g, ' ')
+            // Usuń wielokrotne nowe linie
+            .replace(/(\r?\n\s*){2,}/g, '\n')
+            // Usuń spacje na początku i końcu linii
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0) // Usuń puste linie
+            // Popraw typowe błędy OCR
+            .map(line => line
+                // Popraw 'O' na '0' w liczbach
+                .replace(/(?<=\d)O(?=\d)/g, '0')
+                .replace(/(?<=\d)o(?=\d)/g, '0')
+                // Popraw 'l' lub 'I' na '1' w liczbach
+                .replace(/(?<=\d)[lI](?=\d)/g, '1')
+                // Popraw 'S' na '5' w liczbach
+                .replace(/(?<=\d)S(?=\d)/g, '5')
+                // Popraw 'Z' na '2' w liczbach
+                .replace(/(?<=\d)Z(?=\d)/g, '2')
+                // Popraw 'B' na '8' w liczbach
+                .replace(/(?<=\d)B(?=\d)/g, '8')
+                // Usuń znaki specjalne (zachowaj polskie znaki)
+                .replace(/[^\w\s,.:;/\-()złąćęńóśźżĄĆĘŁŃÓŚŹŻ]/g, '')
+            )
+            // Połącz linie z powrotem
+            .join('\n')
+            // Usuń spacje przed znakami interpunkcyjnymi
+            .replace(/\s+([,.:])/g, '$1')
+            // Dodaj spacje po znakach interpunkcyjnych jeśli ich nie ma
+            .replace(/([,.:])(?!\s)/g, '$1 ')
+            // Końcowe czyszczenie
+            .trim();
+    }
+
+    formatGPTResponse(response) {
+        if (!response) return null;
+
+        try {
+            // Sprawdź czy odpowiedź zawiera sekcje
+            if (response.metadata?.gptAnalysis?.sections) {
+                const sections = response.metadata.gptAnalysis.sections;
+                
+                // Grupuj sekcje według typu danych
+                const groupedSections = {
+                    order_info: [], // Informacje o zamówieniu
+                    company_info: [], // Informacje o firmie
+                    items: [], // Pozycje zamówienia
+                    delivery: [], // Informacje o dostawie
+                    payment: [], // Informacje o płatności
+                    other: [] // Pozostałe informacje
+                };
+
+                sections.forEach(section => {
+                    const content = section.content.trim();
+                    
+                    // Przypisz sekcję do odpowiedniej grupy na podstawie zawartości
+                    if (content.match(/zamówien|numer|data zamów/i)) {
+                        groupedSections.order_info.push(section);
+                    }
+                    else if (content.match(/firma|nip|regon|adres|siedziba/i)) {
+                        groupedSections.company_info.push(section);
+                    }
+                    else if (content.match(/dostaw|termin|miejsce|data dostaw/i)) {
+                        groupedSections.delivery.push(section);
+                    }
+                    else if (content.match(/płatnoś|termin płat|warunki płat/i)) {
+                        groupedSections.payment.push(section);
+                    }
+                    else if (content.match(/pozycj|produkt|towar|sztuk|cena|wartość/i)) {
+                        groupedSections.items.push(section);
+                    }
+                    else {
+                        groupedSections.other.push(section);
+                    }
+                });
+
+                // Przygotuj posortowane sekcje
+                const sortedSections = [];
+                
+                // Kolejność wyświetlania grup
+                const groupOrder = ['order_info', 'company_info', 'delivery', 'items', 'payment', 'other'];
+                
+                groupOrder.forEach(group => {
+                    if (groupedSections[group].length > 0) {
+                        // Dodaj nagłówek grupy
+                        sortedSections.push({
+                            content: this.getGroupHeader(group),
+                            isHeader: true
+                        });
+                        
+                        // Dodaj posortowane sekcje z grupy
+                        groupedSections[group]
+                            .sort((a, b) => this.getSectionPriority(a.content) - this.getSectionPriority(b.content))
+                            .forEach(section => sortedSections.push(section));
+                    }
+                });
+
+                // Zaktualizuj sekcje w odpowiedzi
+                response.metadata.gptAnalysis.sections = sortedSections;
+            }
+
+            return response;
+        } catch (error) {
+            console.error('Błąd podczas formatowania odpowiedzi GPT:', error);
+            return response; // Zwróć oryginalną odpowiedź w przypadku błędu
+        }
+    }
+
+    getGroupHeader(group) {
+        const headers = {
+            order_info: '📋 Informacje o zamówieniu',
+            company_info: '🏢 Dane firmy',
+            delivery: '🚚 Dostawa',
+            items: '📦 Pozycje zamówienia',
+            payment: '💰 Płatność',
+            other: '📎 Pozostałe informacje'
+        };
+        return headers[group] || 'Inne';
+    }
+
+    getSectionPriority(content) {
+        // Nadaj priorytet na podstawie zawartości
+        if (content.match(/numer|nr zamów/i)) return 1;
+        if (content.match(/data zamów/i)) return 2;
+        if (content.match(/nip|regon/i)) return 3;
+        if (content.match(/nazwa firm/i)) return 4;
+        if (content.match(/adres|siedziba/i)) return 5;
+        if (content.match(/termin dostaw/i)) return 6;
+        if (content.match(/miejsce dostaw/i)) return 7;
+        if (content.match(/warunki płat/i)) return 8;
+        return 100; // Domyślny niski priorytet
+    }
 }
 
-// Inicjalizacja aplikacji po załadowaniu DOM
+// Inicjalizacja aplikacji
 document.addEventListener('DOMContentLoaded', () => {
     new PDFProcessor();
 }); 

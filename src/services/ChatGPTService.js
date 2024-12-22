@@ -3,6 +3,8 @@ export class ChatGPTService {
         this.apiKey = import.meta.env.VITE_OPENAI_API_KEY;
         this.assistantId = import.meta.env.VITE_OPENAI_ASSISTANT_ID;
         this.apiUrl = 'https://api.openai.com/v1';
+        this.maxRetries = 3;
+        this.retryDelay = 1000;
         this.validateConfig();
     }
 
@@ -26,24 +28,32 @@ export class ChatGPTService {
     }
 
     async processOrderData(pdfData) {
-        try {
-            const thread = await this.createThread();
-            await this.addMessage(thread.id, pdfData);
-            const run = await this.runAssistant(thread.id);
-            await this.waitForCompletion(thread.id, run.id);
-            
-            const messages = await this.getMessages(thread.id);
-            const assistantMessage = messages.find(msg => msg.role === 'assistant');
-            
-            if (!assistantMessage) {
-                throw new Error('Brak odpowiedzi od asystenta');
-            }
+        let retries = 0;
+        while (retries < this.maxRetries) {
+            try {
+                const thread = await this.createThread();
+                await this.addMessage(thread.id, pdfData);
+                const run = await this.runAssistant(thread.id);
+                await this.waitForCompletion(thread.id, run.id);
+                
+                const messages = await this.getMessages(thread.id);
+                const assistantMessage = messages.find(msg => msg.role === 'assistant');
+                
+                if (!assistantMessage) {
+                    throw new Error('Brak odpowiedzi od asystenta');
+                }
 
-            await this.deleteThread(thread.id);
-            return this.parseResponse(assistantMessage.content[0].text.value);
-        } catch (error) {
-            console.error('Szczegóły błędu:', error);
-            throw error;
+                await this.deleteThread(thread.id);
+                return this.parseResponse(assistantMessage.content[0].text.value);
+            } catch (error) {
+                retries++;
+                if (retries === this.maxRetries) {
+                    console.error('Przekroczono maksymalną liczbę prób:', error);
+                    throw new Error(`Błąd przetwarzania po ${this.maxRetries} próbach: ${error.message}`);
+                }
+                console.warn(`Próba ${retries}/${this.maxRetries} nie powiodła się, ponawiam...`);
+                await new Promise(resolve => setTimeout(resolve, this.retryDelay * retries));
+            }
         }
     }
 
@@ -66,21 +76,25 @@ export class ChatGPTService {
     async addMessage(threadId, pdfData) {
         const prompt = this.createPrompt(pdfData);
         
-        console.log('Wysyłanie wiadomości:', prompt); // Debugging
+        console.log('Wysyłanie wiadomości o długości:', prompt.length);
 
         const response = await fetch(`${this.apiUrl}/threads/${threadId}/messages`, {
             method: 'POST',
             headers: this.getHeaders(),
             body: JSON.stringify({
                 role: 'user',
-                content: prompt // Używamy bezpośrednio tekstu z createPrompt
+                content: prompt
             })
         });
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            console.error('Pełna odpowiedź:', errorData); // Debugging
-            throw new Error(`Błąd dodawania wiadomości: ${response.status} - ${JSON.stringify(errorData)}`);
+            if (process.env.NODE_ENV === 'production') {
+                console.error('Błąd dodawania wiadomości:', response.status);
+            } else {
+                console.error('Pełna odpowiedź:', errorData);
+            }
+            throw new Error(`Błąd dodawania wiadomości: ${response.status}`);
         }
 
         return await response.json();
@@ -105,50 +119,77 @@ export class ChatGPTService {
     }
 
     async waitForCompletion(threadId, runId) {
-        while (true) {
-            const response = await fetch(
-                `${this.apiUrl}/threads/${threadId}/runs/${runId}`,
-                {
-                    headers: this.getHeaders()
+        let attempts = 0;
+        const maxAttempts = 30; // Maksymalnie 30 sekund oczekiwania
+        
+        while (attempts < maxAttempts) {
+            try {
+                const response = await fetch(
+                    `${this.apiUrl}/threads/${threadId}/runs/${runId}`,
+                    {
+                        headers: this.getHeaders()
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`Błąd sprawdzania statusu: ${response.status}`);
                 }
-            );
 
-            if (!response.ok) {
-                throw new Error(`Błąd sprawdzania statusu: ${response.status}`);
+                const run = await response.json();
+                
+                if (run.status === 'completed') {
+                    return run;
+                } else if (run.status === 'failed' || run.status === 'cancelled') {
+                    throw new Error(`Analiza zakończona statusem: ${run.status}`);
+                }
+
+                attempts++;
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                attempts++;
+                if (attempts === maxAttempts) {
+                    throw new Error('Przekroczono limit czasu oczekiwania na odpowiedź');
+                }
+                console.warn(`Próba ${attempts}/${maxAttempts} sprawdzenia statusu nie powiodła się`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-
-            const run = await response.json();
-            if (run.status === 'completed') {
-                return run;
-            } else if (run.status === 'failed') {
-                throw new Error('Analiza nie powiodła się');
-            }
-
-            // Poczekaj 1 sekundę przed kolejnym sprawdzeniem
-            await new Promise(resolve => setTimeout(resolve, 1000));
         }
+        
+        throw new Error('Przekroczono limit czasu oczekiwania na odpowiedź');
     }
 
     async getMessages(threadId) {
-        const response = await fetch(
-            `${this.apiUrl}/threads/${threadId}/messages`,
-            {
-                headers: this.getHeaders()
+        let retries = 0;
+        while (retries < this.maxRetries) {
+            try {
+                const response = await fetch(
+                    `${this.apiUrl}/threads/${threadId}/messages`,
+                    {
+                        headers: this.getHeaders()
+                    }
+                );
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`Status: ${response.status}, Details: ${JSON.stringify(errorData)}`);
+                }
+
+                const data = await response.json();
+                
+                if (!data.data || data.data.length === 0) {
+                    throw new Error('Brak wiadomości w odpowiedzi');
+                }
+
+                return data.data;
+            } catch (error) {
+                retries++;
+                if (retries === this.maxRetries) {
+                    throw new Error(`Błąd pobierania wiadomości po ${this.maxRetries} próbach: ${error.message}`);
+                }
+                console.warn(`Próba ${retries}/${this.maxRetries} pobrania wiadomości nie powiodła się, ponawiam...`);
+                await new Promise(resolve => setTimeout(resolve, this.retryDelay * retries));
             }
-        );
-
-        if (!response.ok) {
-            throw new Error(`Błąd pobierania wiadomości: ${response.status}`);
         }
-
-        const data = await response.json();
-        console.log('Otrzymane wiadomości:', data); // Debugging
-
-        if (!data.data || data.data.length === 0) {
-            throw new Error('Brak wiadomości w odpowiedzi');
-        }
-
-        return data.data; // API zwraca wiadomości w polu 'data'
     }
 
     async deleteThread(threadId) {
@@ -170,6 +211,8 @@ export class ChatGPTService {
             throw new Error('Brak tekstu do analizy');
         }
 
+        console.log('Tworzenie promptu dla dokumentu o długości:', pdfData.text.length);
+
         return `Przeanalizuj poniższą zawartość dokumentu i wyodrębnij kluczowe informacje. Przedstaw każdą informację w osobnej linii:
 
 ${pdfData.text}
@@ -188,6 +231,8 @@ Ucz się schematów plików pdf z których otrzymujesz dane aby zmieniać się w
         }
 
         try {
+            console.log('Przetwarzanie odpowiedzi o długości:', response.length);
+
             // Znajdź JSON w odpowiedzi
             const jsonMatch = response.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
@@ -202,24 +247,24 @@ Ucz się schematów plików pdf z których otrzymujesz dane aby zmieniać się w
                             if (typeof item === 'object') {
                                 Object.entries(item).forEach(([itemKey, itemValue]) => {
                                     data.push({
-                                        content: `${key} ${index + 1} - ${itemKey}: ${itemValue}`
+                                        content: this.cleanContent(`${key} ${index + 1} - ${itemKey}: ${itemValue}`)
                                     });
                                 });
                             } else {
                                 data.push({
-                                    content: `${key} ${index + 1}: ${item}`
+                                    content: this.cleanContent(`${key} ${index + 1}: ${item}`)
                                 });
                             }
                         });
                     } else if (typeof value === 'object') {
                         Object.entries(value).forEach(([subKey, subValue]) => {
                             data.push({
-                                content: `${key} - ${subKey}: ${subValue}`
+                                content: this.cleanContent(`${key} - ${subKey}: ${subValue}`)
                             });
                         });
                     } else {
                         data.push({
-                            content: `${key}: ${value}`
+                            content: this.cleanContent(`${key}: ${value}`)
                         });
                     }
                 });
@@ -235,7 +280,7 @@ Ucz się schematów plików pdf z których otrzymujesz dane aby zmieniać się w
                     .map(line => line.trim())
                     .filter(line => line && !line.match(/^\d+\./)) // Usuń numerację
                     .map(line => ({
-                        content: line.replace(/^[-•]\s*/, '') // Usuń myślniki i kropki
+                        content: this.cleanContent(line.replace(/^[-•]\s*/, '')) // Usuń myślniki i kropki
                     }));
 
                 return {
@@ -245,21 +290,14 @@ Ucz się schematów plików pdf z których otrzymujesz dane aby zmieniać się w
                 };
             }
         } catch (error) {
-            console.error('Błąd parsowania odpowiedzi:', error);
-            // Fallback - podziel tekst na linie
-            const lines = response.split('\n')
-                .map(line => line.trim())
-                .filter(line => line)
-                .map(line => ({
-                    content: line.replace(/^[-•\d+\.]\s*/, '') // Usuń numerację, myślniki i kropki
-                }));
-
-            return {
-                type: 'gpt_analysis',
-                content: response,
-                sections: lines
-            };
+            console.error('Błąd parsowania odpowiedzi');
+            throw error;
         }
+    }
+
+    // Dodaj nową metodę do czyszczenia contentu
+    cleanContent(text) {
+        return text.replace(/^Zamówienie\s*-\s*/i, '');
     }
 
     extractSections(response) {

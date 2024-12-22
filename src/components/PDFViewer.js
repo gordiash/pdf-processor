@@ -1,7 +1,4 @@
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
-
-// Konfiguracja PDF.js
-GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+import { getDocument } from 'pdfjs-dist';
 
 export class PDFViewer {
     constructor() {
@@ -84,20 +81,56 @@ export class PDFViewer {
     }
 
     async loadFiles(files) {
-        this.currentFiles = files;
-        this.currentPage = 1;
-        await this.loadPDF(files[0]);
+        try {
+            this.currentFiles = files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type === 'application/pdf') {
+                    await this.loadPDF(file);
+                } else if (file.type.startsWith('image/')) {
+                    await this.loadImage(file);
+                }
+            }
+        } catch (error) {
+            console.error('Błąd wczytywania pliku:', error);
+            throw error;
+        }
     }
 
     async loadPDF(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
-            this.currentPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            this.currentPdf = await getDocument({
+                data: arrayBuffer,
+                useWorkerFetch: false,
+                isEvalSupported: false,
+                useSystemFonts: true
+            }).promise;
+
             this.numPages = this.currentPdf.numPages;
             await this.renderPage(1);
             this.updatePagination();
         } catch (error) {
             console.error('Błąd wczytywania PDF:', error);
+            throw error;
+        }
+    }
+
+    async loadImage(file) {
+        try {
+            const url = URL.createObjectURL(file);
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+
+            this.container.innerHTML = '';
+            this.container.appendChild(img);
+            this.numPages = 1;
+            this.currentPage = 1;
+            this.updatePagination();
+        } catch (error) {
+            console.error('Błąd wczytywania obrazu:', error);
             throw error;
         }
     }
@@ -171,16 +204,11 @@ export class PDFViewer {
     }
 
     clear() {
+        this.container.innerHTML = '';
         this.currentFiles = [];
         this.currentPdf = null;
         this.currentPage = 1;
         this.numPages = 0;
-        this.currentScale = 1.0;
-        this.container.innerHTML = '';
-        document.querySelector('.zoom-level').textContent = '100%';
-        const pagination = document.getElementById('pagination');
-        if (pagination) {
-            pagination.innerHTML = '';
-        }
+        this.updatePagination();
     }
 } 

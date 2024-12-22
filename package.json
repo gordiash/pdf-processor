@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "npm run copy-worker && vite",
-    "build": "npm run copy-worker && vite build",
-    "copy-worker": "node scripts/copy-worker.js",
-    "postinstall": "npm run copy-worker"
+    "start": "vite",
+    "build": "vite build",
+    "postinstall": "node scripts/setup-worker.js"
   },
   "dependencies": {
     "pdfjs-dist": "3.11.174",
