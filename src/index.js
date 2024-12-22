@@ -7,12 +7,22 @@ import { TextProcessor } from './services/TextProcessor.js';
 export class PDFProcessor {
     constructor() {
         this.currentResults = [];
-        this.initializeComponents().then(() => {
+        // Poczekaj na załadowanie DOM przed inicjalizacją
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        } else {
+            this.init();
+        }
+    }
+
+    async init() {
+        try {
+            await this.initializeComponents();
             this.setupEventListeners();
             this.initializeTheme();
-        }).catch(error => {
+        } catch (error) {
             console.error('Błąd inicjalizacji:', error);
-        });
+        }
     }
 
     initializeTheme() {
@@ -127,10 +137,20 @@ export class PDFProcessor {
 
     async handleFileUpload(event) {
         try {
+            // Sprawdź czy elementy istnieją
+            const ocrBtn = document.getElementById('ocr-btn');
+            const pdfBtn = document.getElementById('pdf-btn');
+            
+            if (!event.target.files) {
+                throw new Error('Nie wybrano plików');
+            }
+
             const files = await this.fileHandler.validateFiles(event.target.files);
             await this.pdfViewer.loadFiles(files);
-            document.getElementById('ocr-btn').disabled = false;
-            document.getElementById('pdf-btn').disabled = false;
+            
+            // Bezpiecznie włącz przyciski
+            if (ocrBtn) ocrBtn.disabled = false;
+            if (pdfBtn) pdfBtn.disabled = false;
         } catch (error) {
             this.showError('Błąd wczytywania pliku:', error);
         }
@@ -744,9 +764,4 @@ export class PDFProcessor {
         if (content.match(/warunki płat/i)) return 8;
         return 100; // Domyślny niski priorytet
     }
-}
-
-// Inicjalizacja aplikacji
-document.addEventListener('DOMContentLoaded', () => {
-    new PDFProcessor();
-}); 
+} 
