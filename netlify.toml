@@ -11,4 +11,10 @@
   for = "/*"
     [headers.values]
     Cross-Origin-Embedder-Policy = "require-corp"
-    Cross-Origin-Opener-Policy = "same-origin" 
+    Cross-Origin-Opener-Policy = "same-origin"
+
+[[headers]]
+  for = "/pdf.worker.min.js"
+  [headers.values]
+    Content-Type = "application/javascript"
+    Cache-Control = "public, max-age=31536000"
