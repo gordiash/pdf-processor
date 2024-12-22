@@ -7,21 +7,29 @@ import { TextProcessor } from './services/TextProcessor.js';
 export class PDFProcessor {
     constructor() {
         this.currentResults = [];
-        // Poczekaj na załadowanie DOM przed inicjalizacją
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => this.init());
-        } else {
-            this.init();
-        }
+        // Inicjalizacja przy tworzeniu instancji
+        this.initialize();
     }
 
-    async init() {
+    async initialize() {
         try {
+            // Poczekaj na załadowanie DOM
+            if (document.readyState === 'loading') {
+                await new Promise(resolve => {
+                    document.addEventListener('DOMContentLoaded', resolve);
+                });
+            }
+
+            // Inicjalizuj komponenty
             await this.initializeComponents();
+            
+            // Inicjalizuj interfejs
             this.setupEventListeners();
             this.initializeTheme();
+            
+            console.log('Aplikacja zainicjalizowana pomyślnie');
         } catch (error) {
-            console.error('Błąd inicjalizacji:', error);
+            console.error('Błąd podczas inicjalizacji aplikacji:', error);
         }
     }
 
@@ -73,37 +81,42 @@ export class PDFProcessor {
             return;
         }
 
-        const fileInput = document.getElementById('file-input');
-        const pdfBtn = document.getElementById('pdf-btn');
-        const ocrBtn = document.getElementById('ocr-btn');
-        const clearBtn = document.getElementById('clear-btn');
-        const themeToggle = document.getElementById('theme-toggle');
-        const selectAll = document.getElementById('select-all');
+        // Pobierz referencje do elementów DOM
+        const elements = {
+            fileInput: document.getElementById('file-input'),
+            pdfBtn: document.getElementById('pdf-btn'),
+            ocrBtn: document.getElementById('ocr-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            themeToggle: document.getElementById('theme-toggle'),
+            selectAll: document.getElementById('select-all')
+        };
 
-        if (fileInput) {
-            fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+        // Dodaj nasłuchiwacze zdarzeń
+        if (elements.fileInput) {
+            elements.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
         }
         
-        if (pdfBtn) {
-            pdfBtn.addEventListener('click', () => this.handlePDFExtract());
+        if (elements.pdfBtn) {
+            elements.pdfBtn.addEventListener('click', () => this.handlePDFExtract());
         }
         
-        if (ocrBtn) {
-            ocrBtn.addEventListener('click', () => this.handleOCR());
+        if (elements.ocrBtn) {
+            elements.ocrBtn.addEventListener('click', () => this.handleOCR());
         }
         
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => this.clearAll());
+        if (elements.clearBtn) {
+            elements.clearBtn.addEventListener('click', () => this.clearAll());
         }
         
-        if (themeToggle) {
-            themeToggle.addEventListener('click', () => this.toggleTheme());
+        if (elements.themeToggle) {
+            elements.themeToggle.addEventListener('click', () => this.toggleTheme());
         }
         
-        if (selectAll) {
-            selectAll.addEventListener('change', (e) => this.handleSelectAll(e.target.checked));
+        if (elements.selectAll) {
+            elements.selectAll.addEventListener('change', (e) => this.handleSelectAll(e.target.checked));
         }
 
+        // Dodaj nasłuchiwacze do przycisków eksportu
         document.querySelectorAll('.export-btn').forEach(btn => {
             btn.addEventListener('click', () => this.handleExport(btn.dataset.format));
         });
@@ -764,4 +777,7 @@ export class PDFProcessor {
         if (content.match(/warunki płat/i)) return 8;
         return 100; // Domyślny niski priorytet
     }
-} 
+}
+
+// Inicjalizacja aplikacji
+const app = new PDFProcessor(); 

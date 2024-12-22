@@ -220,6 +220,7 @@
     <script type="module">
         import * as pdfjsLib from 'pdfjs-dist';
         import { createWorker } from 'tesseract.js';
+        import { PDFProcessor } from './src/index.js';
         
         window.pdfjsLib = pdfjsLib;
         window.Tesseract = { createWorker };
@@ -227,6 +228,9 @@
         // Ustaw ścieżkę do workera
         const workerUrl = new URL('/pdf.worker.min.js', window.location.origin);
         pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl.href;
+
+        // Inicjalizuj aplikację
+        const app = new PDFProcessor();
     </script>
     <script type="module" src="src/index.js"></script>
 </body>
